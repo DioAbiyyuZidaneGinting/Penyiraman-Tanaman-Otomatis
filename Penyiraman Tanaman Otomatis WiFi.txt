@@ -1,0 +1,83 @@
+#include <BluetoothSerial.h>
+#include <Wire.h>
+#include <LiquidCrystal_I2C.h>
+#include <DHT.h>
+
+// Inisialisasi Bluetooth
+BluetoothSerial SerialBT;
+
+// Pin Konfigurasi
+#define soilPin 34
+#define relayPin 26
+#define DHTPIN 32
+#define DHTTYPE DHT11
+
+DHT dht(DHTPIN, DHTTYPE);
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+int soilMoisture = 0;
+int soilPercent = 0;
+char command = 0;
+
+void setup() {
+  Serial.begin(115200);
+  SerialBT.begin("SiramTanaman"); // Nama Bluetooth ESP32
+
+  pinMode(relayPin, OUTPUT);
+  digitalWrite(relayPin, LOW);
+
+  dht.begin();
+  Wire.begin(17, 16); // SDA = 17, SCL = 16
+  lcd.init();
+  lcd.backlight();
+  lcd.setCursor(0, 0);
+  lcd.print("Bluetooth Ready");
+  delay(2000);
+  lcd.clear();
+}
+
+void loop() {
+  // Baca sensor tanah
+  soilMoisture = analogRead(soilPin);
+  soilPercent = map(soilMoisture, 4095, 0, 0, 100);
+  soilPercent = constrain(soilPercent, 0, 100);
+
+  // Baca suhu & kelembaban
+  float suhu = dht.readTemperature();
+  float kelembaban = dht.readHumidity();
+
+  // Kontrol pompa lewat Bluetooth
+  if (SerialBT.available()) {
+    command = SerialBT.read();
+
+    if (command == '1') {
+      digitalWrite(relayPin, HIGH);
+    } else if (command == '0') {
+      digitalWrite(relayPin, LOW);
+    }
+  }
+
+  // Kirim data sensor ke HP via Bluetooth
+  SerialBT.print("Soil: ");
+  SerialBT.print(soilPercent);
+  SerialBT.print("% | Temp: ");
+  SerialBT.print(suhu);
+  SerialBT.print("C | Hum: ");
+  SerialBT.print(kelembaban);
+  SerialBT.println("%");
+
+  // Tampilkan di LCD
+  lcd.setCursor(0, 0);
+  lcd.print("Soil:");
+  lcd.print(soilPercent);
+  lcd.print("%");
+
+  lcd.setCursor(0, 1);
+  lcd.print("T:");
+  lcd.print(suhu, 0);
+  lcd.print("C H:");
+  lcd.print(kelembaban, 0);
+  lcd.print("% ");
+
+  delay(2000);
+}
